@@ -1,9 +1,9 @@
-streamlit
-google-generativeai
-pydantic==2.2.2
-fastapi
-uvicorn[standard]
+streamlit>=1.36
+google-generativeai>=0.7.2
+pydantic>=2.7,<3
+fastapi>=0.112
+uvicorn[standard]>=0.30
 python-multipart
-jinja2
-pandas
-xlsxwriter==3.2.0
+jinja2>=3.1
+pandas>=2.2.2
+XlsxWriter>=3.2.0
