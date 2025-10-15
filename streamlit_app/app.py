@@ -43,7 +43,11 @@ except Exception:
 st.set_page_config(page_title="AI Venture Studio", page_icon="🚀", layout="wide")
 
 st.sidebar.title("⚙️ Setup")
-gemini_key = st.sidebar.text_input("Gemini API Key", type="password")
+# Prefer user input; otherwise Secrets/ENV; lastly built-in fallback (for private use only)
+_gemini_key_input = st.sidebar.text_input("Gemini API Key (optional override)", type="password")
+gemini_key = (_gemini_key_input.strip()
+              or st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
+              or "AIzaSyDMjdcQwyZxanehBg4e-eXfYZ077w67Ios")
 license_token = st.sidebar.text_input("License key (optional)", type="password").strip()
 signing_secret = st.secrets.get("LICENSE_SIGNING_SECRET", os.getenv("LICENSE_SIGNING_SECRET", "dev-secret"))
 
@@ -58,8 +62,12 @@ st.sidebar.caption(f"🔐 License status: {lic_status}")
 st.sidebar.caption(f"Runs/day: {limits['max_runs_per_day']} • max ideas/run: {limits['max_ideas']} • Export: {'yes' if limits['allow_export'] else 'no'}")
 
 if not gemini_key:
-    st.info("Please enter your **Gemini API Key** in the sidebar. Get one here: https://aistudio.google.com/app/apikey")
+    st.error("No Gemini API key available. Set GEMINI_API_KEY in Secrets/ENV or paste one in the sidebar.")
     st.stop()
+
+# Show a subtle warning if the app is using the hardcoded fallback key
+if not _gemini_key_input and not st.secrets.get("GEMINI_API_KEY") and not os.getenv("GEMINI_API_KEY"):
+    st.sidebar.warning("Using built-in demo key. Do NOT expose this publicly. Prefer Streamlit Secrets.")
 
 # Gemini konfigurieren
 MODEL_ID = st.secrets.get("MODEL_ID", os.getenv("MODEL_ID", "models/gemini-2.5-flash"))
@@ -307,3 +315,4 @@ else:
             st.info("Note: Excel export requires XlsxWriter. It becomes available once the deployment with the updated requirements.txt is live.")
     else:
         st.warning("Export is disabled in the Free tier. Upgrade to Pro/Agency to export CSV/ZIP.")
+
