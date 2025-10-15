@@ -1,27 +1,24 @@
 # streamlit_app/app.py
 import os, json, re, time, io
 from datetime import datetime
-from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 import google.generativeai as genai
 from jinja2 import Template
 
-# --- Lizenz-Import (mit Fallback) -------------------------------------------------
+# --- Lizenzfunktionen (Fallback, falls utils/ nicht importierbar ist) -----------------
 try:
     from utils.licensing import verify_license, plan_limits
 except Exception:
-    # Fallback: einfache Lizenzprüfung (HMAC-signiert)
     import base64, hmac, hashlib
-
     def _b64url(b: bytes) -> str:
-        return base64.urlsafe_b64encode(b).decode().rstrip("=")
-
+        import base64 as _b
+        return _b.urlsafe_b64encode(b).decode().rstrip("=")
     def _unb64url(s: str) -> bytes:
+        import base64 as _b
         pad = "=" * (-len(s) % 4)
-        return base64.urlsafe_b64decode(s + pad)
-
+        return _b.urlsafe_b64decode(s + pad)
     def verify_license(license_token: str, secret: str):
         try:
             body_b64, sig_b64 = license_token.split(".", 1)
@@ -35,7 +32,6 @@ except Exception:
             return True, payload, "ok"
         except Exception:
             return False, None, "malformed"
-
     def plan_limits(plan: str) -> dict:
         if plan == "agency":
             return {"max_runs_per_day": 200, "max_ideas": 15, "allow_export": True}
@@ -43,12 +39,12 @@ except Exception:
             return {"max_runs_per_day": 20, "max_ideas": 12, "allow_export": True}
         return {"max_runs_per_day": 2, "max_ideas": 5, "allow_export": False}
 
-# --- Grund-Setup ------------------------------------------------------------------
+# --- Grund-Setup --------------------------------------------------------------------
 st.set_page_config(page_title="AI Venture Studio", page_icon="🚀", layout="wide")
 
 st.sidebar.title("⚙️ Setup")
 gemini_key = st.sidebar.text_input("Gemini API Key", type="password")
-license_token = st.sidebar.text_input("Lizenzschlüssel (optional)", type="password").strip()
+license_token = st.sidebar.text_input("License key (optional)", type="password").strip()
 signing_secret = st.secrets.get("LICENSE_SIGNING_SECRET", os.getenv("LICENSE_SIGNING_SECRET", "dev-secret"))
 
 valid_license, license_payload, lic_status = (
@@ -59,28 +55,27 @@ limits = plan_limits(active_plan)
 
 st.sidebar.markdown(f"**Plan:** `{active_plan}`")
 st.sidebar.caption(f"🔐 License status: {lic_status}")
-st.sidebar.caption(f"Runs/Tag: {limits['max_runs_per_day']} • max Ideen/Run: {limits['max_ideas']} • Export: {'ja' if limits['allow_export'] else 'nein'}")
+st.sidebar.caption(f"Runs/day: {limits['max_runs_per_day']} • max ideas/run: {limits['max_ideas']} • Export: {'yes' if limits['allow_export'] else 'no'}")
 
-# Gemini Key prüfen
 if not gemini_key:
-    st.info("Bitte links deinen **Gemini API Key** eintragen. Key holen: https://aistudio.google.com/app/apikey")
+    st.info("Please enter your **Gemini API Key** in the sidebar. Get one here: https://aistudio.google.com/app/apikey")
     st.stop()
 
 # Gemini konfigurieren
-genai.configure(api_key=gemini_key)
 MODEL_ID = st.secrets.get("MODEL_ID", os.getenv("MODEL_ID", "models/gemini-2.5-flash"))
+genai.configure(api_key=gemini_key)
 
-# Tagesnutzung zählen (einfacher In-Memory-Counter)
+# Tagesnutzung zählen
 if "usage" not in st.session_state:
     st.session_state.usage = {"count_today": 0, "date": datetime.utcnow().date().isoformat()}
 today = datetime.utcnow().date().isoformat()
 if st.session_state.usage["date"] != today:
     st.session_state.usage = {"count_today": 0, "date": today}
 if st.session_state.usage["count_today"] >= limits["max_runs_per_day"]:
-    st.error("Tageslimit erreicht. Upgrade auf Pro/Agency für mehr Runs.")
+    st.error("Daily limit reached. Upgrade to Pro/Agency for more runs.")
     st.stop()
 
-# --- Hilfsfunktionen --------------------------------------------------------------
+# --- Hilfsfunktionen ---------------------------------------------------------------
 @st.cache_data(show_spinner=False)
 def render_lp(idea: dict) -> str:
     tpl = Template("""
@@ -97,14 +92,14 @@ input,button{padding:10px 12px;border-radius:10px;border:1px solid #ddd}
 </style></head>
 <body>
 <section class="hero"><h1>{{ name }}</h1><p>{{ one_liner }}</p>
-<form><input type="email" placeholder="E-Mail für Early Access" required /><button>Warteliste</button></form></section>
+<form><input type=\"email\" placeholder=\"Email for early access\" required \/><button>Join waitlist<\/button><\/form></section>
 <section class="grid">
-<div class="card"><b>Warum?</b><p>{{ description }}</p></div>
+<div class=\"card\"><b>Why?<\/b><p>{{ description }}</p></div>
 <div class="card"><b>Unique Angle</b><p>{{ unique_angle }}</p></div>
-<div class="card"><b>Für wen?</b><p>{{ target_user }}</p></div>
-<div class="card"><b>JTBD</b><ul>{% for j in jobs_to_be_done %}<li>{{ j }}</li>{% endfor %}</ul></div>
+<div class=\"card\"><b>Target user<\/b><p>{{ target_user }}<\/p><\/div>
+<div class=\"card\"><b>Jobs to be done<\/b><ul>{% for j in jobs_to_be_done %}<li>{{ j }}</li>{% endfor %}</ul></div>
 </section>
-<footer>Demo Landing-Page</footer>
+<footer>Demo landing page<\/footer>
 </body></html>
 """)
     return tpl.render(**idea)
@@ -113,7 +108,6 @@ def gemini_json(prompt: str, temperature: float = 0.55):
     model = genai.GenerativeModel(model_name=MODEL_ID)
     res = model.generate_content(prompt, generation_config={"temperature": temperature})
     txt = res.text or ""
-    # robustes JSON-Parsing
     try:
         return json.loads(txt)
     except Exception:
@@ -129,43 +123,41 @@ def gemini_json(prompt: str, temperature: float = 0.55):
 
 def gen_ideas(domain, audience, problem, n):
     prompt = f"""
-Du bist ein Innovations-Copilot. Erzeuge {n} neuartige Produktideen (SaaS, API, Tool, Service) für:
-- Branche: "{domain}"
-- Zielgruppe: "{audience}"
-- Kernproblem: "{problem}"
+You are an innovation copilot. Create {n} **novel** product ideas (SaaS, API, tool, service) for:
+- Industry: "{domain}"
+- Audience: "{audience}"
+- Core problem: "{problem}"
 
-Gib ausschließlich **gültiges JSON** im Format:
-{{"ideas":[{{"name":"","one_liner":"","description":"","unique_angle":"",
-"target_user":"","jobs_to_be_done":["",""]}}]}}
+Return **valid JSON only** in the format:
+{"ideas":[{"name":"","one_liner":"","description":"","unique_angle":"",
+"target_user":"","jobs_to_be_done":["",""]}]}
 """
     obj = gemini_json(prompt, temperature=0.6)
     return obj.get("ideas", [])
 
 def score_one(idea: dict):
     prompt = f"""
-Bewerte die Idee. Antworte nur JSON:
-{{
+Score the idea. Reply **JSON only**:
+{
   "market_potential": 0,
   "differentiation_moat": 0,
   "build_effort": 0,
   "regulatory_risk": 0,
   "time_to_value": 0,
   "rationale": ""
-}}
+}
 
-Idee:
+Idea:
 NAME: {idea.get('name','')}
 ONE_LINER: {idea.get('one_liner','')}
-BESCHREIBUNG: {idea.get('description','')}
-ZIEL: {idea.get('target_user','')}
+DESCRIPTION: {idea.get('description','')}
+TARGET_USER: {idea.get('target_user','')}
 UNIQUE_ANGLE: {idea.get('unique_angle','')}
 """
     s = gemini_json(prompt, temperature=0.3)
-
     def _i(x):
         try: return int(x)
         except: return 0
-
     eff  = _i(s.get("build_effort", 0))
     risk = _i(s.get("regulatory_risk", 0))
     total = (
@@ -183,22 +175,41 @@ if "results" not in st.session_state:
 # --- UI ---------------------------------------------------------------------------
 st.title("🚀 AI Venture Studio")
 
+# Welcome / How it works
+st.markdown(
+    """
+**Welcome!** Here's how this app works:
+1. Enter your **Gemini API key** in the left sidebar (get one at https://aistudio.google.com/app/apikey).
+2. Fill **Industry**, **Audience**, and the **Core problem**.
+3. Click **Generate & score ideas**.
+
+The app will:
+- generate N fresh ideas,
+- auto‑score them (market potential, moat, effort, regulatory risk, time‑to‑value),
+- show a **ranking table** and **top‑3 previews** with a simple landing page mock.
+
+**Free tier:** 2 runs/day, limited ideas, no export.  
+**Pro/Agency:** higher limits + CSV/XLSX export.
+"""
+)
+
+
 with st.form("controls"):
     col1, col2, col3 = st.columns(3)
     with col1:
-        domain = st.text_input("Branche / Markt", "Pflegebranche", key="inp_domain")
+        domain = st.text_input("Industry / Market", "Healthcare", key="inp_domain")
     with col2:
-        audience = st.text_input("Zielgruppe", "Stationsleitungen", key="inp_audience")
+        audience = st.text_input("Audience", "Nurse unit managers", key="inp_audience")
     with col3:
-        problem = st.text_input("Kernproblem", "Dienstplan-Chaos & Personalmangel", key="inp_problem")
+        problem = st.text_input("Core problem", "Shift chaos & staffing shortages", key="inp_problem")
 
-    n_ideas = st.slider("Anzahl Ideen", 3, limits["max_ideas"], min(10, limits["max_ideas"]), key="inp_nideas")
-    submitted = st.form_submit_button("Ideen generieren & bewerten")
+    n_ideas = st.slider("Number of ideas", 3, limits["max_ideas"], min(10, limits["max_ideas"]), key="inp_nideas")
+    submitted = st.form_submit_button("Generate & score ideas")
 
 # Reset-Button
-if st.sidebar.button("🔄 Ergebnisse zurücksetzen"):
+if st.sidebar.button("🔄 Reset results"):
     st.session_state.results = {"ideas": None, "scored": None, "df": None, "params": None}
-    st.success("Ergebnisse zurückgesetzt.")
+    st.success("Results have been reset.")
 
 # --- Ausführung nur bei Submit ----------------------------------------------------
 if submitted:
@@ -208,6 +219,7 @@ if submitted:
     with st.spinner("Bewerte Ideen ..."):
         scored = [score_one(x) for x in ideas]
 
+    import pandas as pd
     df = pd.DataFrame([{
         "name": x["name"],
         "one_liner": x["one_liner"],
@@ -225,26 +237,26 @@ if submitted:
 # --- Anzeige (stabil bei Reruns) -------------------------------------------------
 res = st.session_state.results
 if res["df"] is None:
-    st.info("So startest du: 1) API-Key links eintragen 2) Formular ausfüllen 3) Button klicken.")
+    st.info("How to start: 1) Enter API key on the left 2) Fill the form 3) Press the button.")
 else:
     df = res["df"]
 
     st.subheader("🏁 Ranking")
     df_view = df.rename(columns={
-        "name": "Idee",
-        "one_liner": "Kurzbeschreibung",
-        "total_score": "Gesamtscore",
+        "name": "Idea",
+        "one_liner": "One-liner",
+        "total_score": "Total score",
     })[["Idee", "Kurzbeschreibung", "Gesamtscore"]]
     st.dataframe(df_view, use_container_width=True)
 
-    st.subheader("Top-Ideen")
+    st.subheader("Top ideas")
     scored = res["scored"]
     top = scored[:3] if len(scored) >= 3 else scored
     for idea in top:
         with st.expander(f"{idea['name']} — Score {idea['total_score']}"):
             st.write(idea["one_liner"])
             st.write("**Unique angle:** ", idea["unique_angle"])
-            st.write("**Beschreibung:** ", idea["description"])
+            st.write("**Description:** ", idea["description"])
             st.write("**JTBD:** ", ", ".join(idea.get("jobs_to_be_done", [])))
             st.markdown("---")
             st.markdown("**Landing-Preview**")
@@ -263,20 +275,20 @@ else:
             "regulatory_risk": "Regulatorik-Risiko (0–10)",
             "time_to_value": "Time-to-Value (0–10)",
             "total_score": "Gesamtscore",
-        })[
-            ["Idee", "Kurzbeschreibung", "Gesamtscore",
-             "Marktpotenzial (0–10)", "Differenzierung/Moat (0–10)",
-             "Aufwand (0–10)", "Regulatorik-Risiko (0–10)", "Time-to-Value (0–10)"]
-        ]
+        })[[
+            "Idee", "Kurzbeschreibung", "Gesamtscore",
+            "Marktpotenzial (0–10)", "Differenzierung/Moat (0–10)",
+            "Aufwand (0–10)", "Regulatorik-Risiko (0–10)", "Time-to-Value (0–10)"
+        ]]
 
-        # CSV: Semikolon + UTF-8-BOM (Excel-DE freundlich)
+        # CSV (Excel-DE freundlich)
         csv_bytes = df_out.to_csv(index=False, sep=";", encoding="utf-8-sig").encode("utf-8-sig")
         st.download_button("CSV herunterladen (DE, Excel-freundlich)", csv_bytes,
                            file_name="ideen_ranking.csv", mime="text/csv")
 
-        # Excel: nur wenn XlsxWriter vorhanden
+        # Excel (falls XlsxWriter vorhanden)
         try:
-            import XlsxWriter  # noqa: F401  (nur Verfügbarkeit prüfen)
+            import XlsxWriter  # noqa: F401
             xbuf = io.BytesIO()
             with pd.ExcelWriter(xbuf, engine="xlsxwriter") as writer:
                 df_out.to_excel(writer, index=False, sheet_name="Ranking")
@@ -288,12 +300,14 @@ else:
                     ws.set_column(col_idx, col_idx, min(max_len + 2, 60))
                 ws.set_row(0, 24, header_fmt)
                 ws.autofilter(0, 0, len(df_out), len(df_out.columns) - 1)
-            st.download_button("Excel herunterladen (formatiert)",
-                               xbuf.getvalue(),
+            st.download_button("Excel herunterladen (formatiert)", xbuf.getvalue(),
                                file_name="ideen_ranking.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         except Exception:
             st.info("Hinweis: Excel-Export benötigt XlsxWriter. Wird aktiv, sobald das Deployment mit aktualisiertem requirements.txt durch ist.")
+    else:
+        st.warning("Export ist in der Free-Tier deaktiviert. Upgrade auf Pro/Agency, um CSV/ZIP zu exportieren.")
+
     else:
         st.warning("Export ist in der Free-Tier deaktiviert. Upgrade auf Pro/Agency, um CSV/ZIP zu exportieren.")
 
