@@ -129,8 +129,8 @@ You are an innovation copilot. Create {n} **novel** product ideas (SaaS, API, to
 - Core problem: "{problem}"
 
 Return **valid JSON only** in the format:
-{"ideas":[{"name":"","one_liner":"","description":"","unique_angle":"",
-"target_user":"","jobs_to_be_done":["",""]}]}
+{{"ideas":[{{"name":"","one_liner":"","description":"","unique_angle":"",
+"target_user":"","jobs_to_be_done":["",""]}}]}}
 """
     obj = gemini_json(prompt, temperature=0.6)
     return obj.get("ideas", [])
@@ -214,9 +214,9 @@ if st.sidebar.button("🔄 Reset results"):
 # --- Ausführung nur bei Submit ----------------------------------------------------
 if submitted:
     params = (domain, audience, problem, n_ideas)
-    with st.spinner("Generiere Ideen ..."):
+    with st.spinner("Generating ideas ..."):
         ideas = gen_ideas(domain, audience, problem, n_ideas)
-    with st.spinner("Bewerte Ideen ..."):
+    with st.spinner("Scoring ideas ..."):
         scored = [score_one(x) for x in ideas]
 
     import pandas as pd
@@ -246,7 +246,7 @@ else:
         "name": "Idea",
         "one_liner": "One-liner",
         "total_score": "Total score",
-    })[["Idee", "Kurzbeschreibung", "Gesamtscore"]]
+    })[["Idea", "One-liner", "Total score"]]
     st.dataframe(df_view, use_container_width=True)
 
     st.subheader("Top ideas")
@@ -257,36 +257,36 @@ else:
             st.write(idea["one_liner"])
             st.write("**Unique angle:** ", idea["unique_angle"])
             st.write("**Description:** ", idea["description"])
-            st.write("**JTBD:** ", ", ".join(idea.get("jobs_to_be_done", [])))
+            st.write("**Jobs to be done:** ", ", ".join(idea.get("jobs_to_be_done", [])))
             st.markdown("---")
-            st.markdown("**Landing-Preview**")
+            st.markdown("**Landing preview**")
             st.components.v1.html(render_lp(idea), height=520, scrolling=True)
 
     # -------------------- Export (Pro/Agency) --------------------
     if limits["allow_export"]:
-        st.success("Export freigeschaltet (Pro/Agency)")
+        st.success("Export enabled (Pro/Agency)")
 
         df_out = df.rename(columns={
-            "name": "Idee",
-            "one_liner": "Kurzbeschreibung",
-            "market_potential": "Marktpotenzial (0–10)",
-            "differentiation_moat": "Differenzierung/Moat (0–10)",
-            "build_effort": "Aufwand (0–10)",
-            "regulatory_risk": "Regulatorik-Risiko (0–10)",
-            "time_to_value": "Time-to-Value (0–10)",
-            "total_score": "Gesamtscore",
+            "name": "Idea",
+            "one_liner": "One-liner",
+            "market_potential": "Market potential (0–10)",
+            "differentiation_moat": "Differentiation/Moat (0–10)",
+            "build_effort": "Build effort (0–10)",
+            "regulatory_risk": "Regulatory risk (0–10)",
+            "time_to_value": "Time to value (0–10)",
+            "total_score": "Total score",
         })[[
-            "Idee", "Kurzbeschreibung", "Gesamtscore",
-            "Marktpotenzial (0–10)", "Differenzierung/Moat (0–10)",
-            "Aufwand (0–10)", "Regulatorik-Risiko (0–10)", "Time-to-Value (0–10)"
+            "Idea", "One-liner", "Total score",
+            "Market potential (0–10)", "Differentiation/Moat (0–10)",
+            "Build effort (0–10)", "Regulatory risk (0–10)", "Time to value (0–10)"
         ]]
 
-        # CSV (Excel-DE freundlich)
-        csv_bytes = df_out.to_csv(index=False, sep=";", encoding="utf-8-sig").encode("utf-8-sig")
-        st.download_button("CSV herunterladen (DE, Excel-freundlich)", csv_bytes,
-                           file_name="ideen_ranking.csv", mime="text/csv")
+        # CSV (comma, UTF-8 with BOM)
+        csv_bytes = df_out.to_csv(index=False, sep=",", encoding="utf-8-sig").encode("utf-8-sig")
+        st.download_button("Download CSV (Excel-friendly)", csv_bytes,
+                           file_name="ideas_ranking.csv", mime="text/csv")
 
-        # Excel (falls XlsxWriter vorhanden)
+        # Excel (if XlsxWriter available)
         try:
             import XlsxWriter  # noqa: F401
             xbuf = io.BytesIO()
@@ -300,14 +300,10 @@ else:
                     ws.set_column(col_idx, col_idx, min(max_len + 2, 60))
                 ws.set_row(0, 24, header_fmt)
                 ws.autofilter(0, 0, len(df_out), len(df_out.columns) - 1)
-            st.download_button("Excel herunterladen (formatiert)", xbuf.getvalue(),
-                               file_name="ideen_ranking.xlsx",
+            st.download_button("Download Excel (formatted)", xbuf.getvalue(),
+                               file_name="ideas_ranking.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         except Exception:
-            st.info("Hinweis: Excel-Export benötigt XlsxWriter. Wird aktiv, sobald das Deployment mit aktualisiertem requirements.txt durch ist.")
+            st.info("Note: Excel export requires XlsxWriter. It becomes available once the deployment with the updated requirements.txt is live.")
     else:
-        st.warning("Export ist in der Free-Tier deaktiviert. Upgrade auf Pro/Agency, um CSV/ZIP zu exportieren.")
-
-    else:
-        st.warning("Export ist in der Free-Tier deaktiviert. Upgrade auf Pro/Agency, um CSV/ZIP zu exportieren.")
-
+        st.warning("Export is disabled in the Free tier. Upgrade to Pro/Agency to export CSV/ZIP.")
