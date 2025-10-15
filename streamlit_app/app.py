@@ -163,12 +163,51 @@ if run:
             st.markdown("**Landing-Preview**")
             st.components.v1.html(render_lp(idea), height=500, scrolling=True)
 
-    if limits["allow_export"]:
-        st.success("Export freigeschaltet (Pro/Agency)")
-        csv = df.to_csv(index=False).encode()
-        st.download_button("CSV herunterladen", csv, file_name="ideas_scored.csv", mime="text/csv")
-    else:
-        st.warning("Export ist in der Free-Tier deaktiviert. Upgrade auf Pro/Agency, um CSV/ZIP zu exportieren.")
+   if limits["allow_export"]:
+    st.success("Export freigeschaltet (Pro/Agency)")
+
+    # --- hübschere Spaltennamen & Reihenfolge ---
+    df_out = df.rename(columns={
+        "name": "Idee",
+        "one_liner": "Kurzbeschreibung",
+        "market_potential": "Marktpotenzial (0–10)",
+        "differentiation_moat": "Differenzierung/Moat (0–10)",
+        "build_effort": "Aufwand (0–10)",
+        "regulatory_risk": "Regulatorik-Risiko (0–10)",
+        "time_to_value": "Time-to-Value (0–10)",
+        "total_score": "Gesamtscore"
+    })[
+        ["Idee","Kurzbeschreibung","Gesamtscore",
+         "Marktpotenzial (0–10)","Differenzierung/Moat (0–10)",
+         "Aufwand (0–10)","Regulatorik-Risiko (0–10)","Time-to-Value (0–10)"]
+    ]
+
+    # --- CSV für DE/Excel: Semikolon + UTF-8-BOM ---
+    csv_bytes = df_out.to_csv(index=False, sep=";", encoding="utf-8-sig").encode("utf-8-sig")
+    st.download_button("CSV herunterladen (DE, Excel-freundlich)", csv_bytes,
+                       file_name="ideen_ranking.csv", mime="text/csv")
+
+    # --- XLSX mit Auto-Width & Header-Format ---
+    import io
+    xbuf = io.BytesIO()
+    with pd.ExcelWriter(xbuf, engine="xlsxwriter") as writer:
+        df_out.to_excel(writer, index=False, sheet_name="Ranking")
+        wb  = writer.book
+        ws  = writer.sheets["Ranking"]
+        header_fmt = wb.add_format({"bold": True, "text_wrap": True, "valign": "top", "border": 0})
+        for col_idx, col in enumerate(df_out.columns):
+            # Auto-Breite: max( header, Daten )
+            max_len = max([len(str(col))] + [len(str(v)) for v in df_out[col].astype(str).values]) 
+            ws.set_column(col_idx, col_idx, min(max_len + 2, 60))
+        ws.set_row(0, 24, header_fmt)
+        # Optionale Filterzeile
+        ws.autofilter(0, 0, len(df_out), len(df_out.columns)-1)
+    st.download_button("Excel herunterladen (formatiert)", xbuf.getvalue(),
+                       file_name="ideen_ranking.xlsx",
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+else:
+    st.warning("Export ist in der Free-Tier deaktiviert. Upgrade auf Pro/Agency, um CSV/ZIP zu exportieren.")
+
 else:
     st.caption("Tipp: Stelle Branche/Zielgruppe/Problem ein und klicke auf **Ideen generieren & bewerten**.")
 
