@@ -146,14 +146,14 @@ Return **valid JSON only** in the format:
 def score_one(idea: dict):
     prompt = f"""
 Score the idea. Reply **JSON only**:
-{
+{{
   "market_potential": 0,
   "differentiation_moat": 0,
   "build_effort": 0,
   "regulatory_risk": 0,
   "time_to_value": 0,
   "rationale": ""
-}
+}}
 
 Idea:
 NAME: {idea.get('name','')}
